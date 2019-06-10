@@ -22,7 +22,9 @@ void main() {
   vec2 st = gl_FragCoord.xy / u_resolution;
   // flip it!
   st.y = 1.0 - st.y;
-  vec3 color = vec3(1.0) * texture2D(state, st).rgb;
+  vec4 val = texture2D(state, st);
+  int kind = int(val.r * 255.0);
+  vec3 color = vec3(1.0, 0.0, 1.0) * (kind == 123 ? 1.0 : 0.0) + vec3(0.0, val.g, val.b);
   gl_FragColor = vec4(color, 1.0);
 }
 `;
@@ -37,28 +39,48 @@ uniform vec2 u_resolution;
 // Previous state
 uniform sampler2D state;
 
-int get(vec2 coord) {
-  return int(texture2D(state, (gl_FragCoord.xy + coord) / u_resolution).r);
+ivec4 get(vec2 coord) {
+  return ivec4(texture2D(state, (gl_FragCoord.xy + coord) / u_resolution) * 255.0);
 }
+
+ivec4 get(int dx, int dy) {
+  return get(vec2(float(dx), float(dy)));
+}
+
+#define VOID 0
+#define WALL 1
+#define SAND 2
+
+#define GOL 123
 
 void main() {
   vec2 st = gl_FragCoord.xy / u_resolution;
-  int sum = get(vec2(-1.0, -1.0)) +
-  get(vec2( 0.0, -1.0)) +
-  get(vec2( 1.0, -1.0)) +
-  get(vec2(-1.0,  0.0)) +
-  get(vec2( 1.0,  0.0)) +
-  get(vec2(-1.0,  1.0)) +
-  get(vec2( 0.0,  1.0)) +
-  get(vec2( 1.0,  1.0));
-  int res = get(vec2(0.0, 0.0));
-  if (sum < 2 || sum > 3) {
-    res = 0;
+
+  int sum = int(get(-1, -1).x == GOL) +
+  int(get( 0, -1).x == GOL) +
+  int(get( 1, -1).x == GOL) +
+  int(get(-1,  0).x == GOL) +
+  int(get( 1,  0).x == GOL) +
+  int(get(-1,  1).x == GOL) +
+  int(get( 0,  1).x == GOL) +
+  int(get( 1,  1).x == GOL);
+
+  ivec4 res = get(0, 0);
+  if (res.x == GOL) {
+    if (sum < 2 || sum > 3) {
+      res.x = VOID;
+      res.y = 0;
+    } else {
+      res.y += 1;
+    }
   } else if (sum == 3) {
-    res = 1;
+    res.x = GOL;
+    res.z = 0;
+  } else {
+    res.z += 1;
   }
 
-  gl_FragColor = vec4(vec3(res == 0 ? 0.0 : 1.0), 1.0);
+  gl_FragColor = vec4(res) / 255.0;
 }
 `;
 
@@ -103,25 +125,24 @@ function main() {
   gl.deleteShader(vShader);
   gl.deleteShader(stepShader);
 
-  let tex0 = gl.createTexture();
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, tex0);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, i);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.generateMipmap(gl.TEXTURE_2D);
+  const a = new Uint8Array(canvas.width * canvas.height * 4);
+  for (let i = 0; i < canvas.width * canvas.height; i++) {
+    a[i*4] = Math.random() > 0.5 ? 123 : 0;
+    a[i*4+1] = 0;
+    a[i*4+2] = 0;
+    a[i*4+3] = 0;
+  }
 
-  let tex1 = gl.createTexture();
-  gl.activeTexture(gl.TEXTURE1);
-  gl.bindTexture(gl.TEXTURE_2D, tex1);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, i);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.generateMipmap(gl.TEXTURE_2D);
+  const tex = [0, 1].map((i) => {
+    const t = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0 + i);
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, a);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    return t;
+  });
 
   const vertices = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, vertices);
@@ -150,10 +171,10 @@ function main() {
 
   const buffers = [gl.createFramebuffer(), gl.createFramebuffer()];
   gl.bindFramebuffer(gl.FRAMEBUFFER, buffers[0]);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex0, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex[0], 0);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, buffers[1]);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex1, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex[1], 0);
 
   gl.viewport(0, 0, canvas.width, canvas.height);
 
@@ -170,7 +191,7 @@ function main() {
   let lastRender = performance.now();
   const step = () => {
     const t = performance.now();
-    if (t - lastRender > 100) {
+    //if (t - lastRender > 100) {
       lastRender = t;
       // Bind state frame buffer, draw to it
       gl.bindFramebuffer(gl.FRAMEBUFFER, buffers[bufIndex]);
@@ -178,7 +199,7 @@ function main() {
       gl.uniform1i(stepStateLoc, 1 - bufIndex);
       gl.drawArrays(gl.TRIANGLES, 0, 6.0);
       bufIndex = 1 - bufIndex;
-    }
+    //}
 
     render();
 
