@@ -10,26 +10,7 @@ void main() {
 }
 `;
 
-const renderShader = `
-#ifdef GL_ES
-precision mediump float;
-#endif
-
-uniform vec2 u_resolution;
-uniform sampler2D state;
-
-void main() {
-  vec2 st = gl_FragCoord.xy / u_resolution;
-  // flip it!
-  st.y = 1.0 - st.y;
-  vec4 val = texture2D(state, st);
-  int kind = int(val.r * 255.0);
-  vec3 color = vec3(1.0, 0.0, 1.0) * (kind == 123 ? 1.0 : 0.0) + vec3(0.0, val.g, val.b);
-  gl_FragColor = vec4(color, 1.0);
-}
-`;
-
-const simulateShader = `
+const header = `
 #ifdef GL_ES
 precision mediump float;
 #endif
@@ -47,15 +28,26 @@ ivec4 get(int dx, int dy) {
   return get(vec2(float(dx), float(dy)));
 }
 
+ivec4 get() {
+  return get(0, 0);
+}
+
 #define VOID 0
 #define WALL 1
 #define SAND 2
-
 #define GOL 123
+`;
 
+const renderShader = header+`
 void main() {
-  vec2 st = gl_FragCoord.xy / u_resolution;
+  ivec4 cur = get(0, 0);
+  vec3 color = vec3(cur.x == GOL ? 1.0 : 0.0);
+  gl_FragColor = vec4(color, 1.0);
+}
+`;
 
+const simulateShader = header+`
+void main() {
   int sum = int(get(-1, -1).x == GOL) +
   int(get( 0, -1).x == GOL) +
   int(get( 1, -1).x == GOL) +
@@ -83,10 +75,6 @@ void main() {
   gl_FragColor = vec4(res) / 255.0;
 }
 `;
-
-const i = new Image();
-i.onload = main;
-i.src = "game-of-life.png";
 
 function main() {
   const canvas = document.querySelector("#canvas");
@@ -146,7 +134,14 @@ function main() {
 
   const vertices = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, vertices);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0]), gl.STATIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+    -1.0, -1.0,
+    1.0, -1.0,
+    -1.0, 1.0,
+    -1.0, 1.0,
+    1.0, -1.0,
+    1.0, 1.0
+  ]), gl.STATIC_DRAW);
 
   const verticesLoc = gl.getAttribLocation(program, 'a_position');
   gl.enableVertexAttribArray(verticesLoc);
@@ -191,7 +186,7 @@ function main() {
   let lastRender = performance.now();
   const step = () => {
     const t = performance.now();
-    //if (t - lastRender > 100) {
+    if (t - lastRender > 100) {
       lastRender = t;
       // Bind state frame buffer, draw to it
       gl.bindFramebuffer(gl.FRAMEBUFFER, buffers[bufIndex]);
@@ -199,7 +194,7 @@ function main() {
       gl.uniform1i(stepStateLoc, 1 - bufIndex);
       gl.drawArrays(gl.TRIANGLES, 0, 6.0);
       bufIndex = 1 - bufIndex;
-    //}
+    }
 
     render();
 
@@ -208,3 +203,5 @@ function main() {
   render();
   requestAnimationFrame(step);
 }
+
+main();
