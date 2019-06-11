@@ -2,16 +2,24 @@
 <html>
 <head>
 <meta charset="utf-8"> 
+<meta name="viewport" content="target-densitydpi=device-dpi, width=device-width, user-scalable=no, maximum-scale=1, minimum-scale=1" />
 <style>
 #canvas {
-  width: 512px;
-  height: 512px;
+  width: 100vw;
+  max-width: 1024px;
+  max-height: 1024px;
+  height: 100vw;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+}
+* {
+  padding: 0;
+  margin: 0;
 }
 </style>
 </head>
 <body>
+  <select></select><br>
   <canvas id="canvas"></canvas>
   <script src="script.js"></script>
 </body>
